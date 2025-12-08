@@ -2,10 +2,11 @@ import { useState } from 'react';
 import '@/App.css';
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Upload, Activity, Zap, ArrowLeft, Image as ImageIcon } from 'lucide-react';
+import { Upload, Activity, Zap, ArrowLeft, Image as ImageIcon, Target } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -75,10 +76,10 @@ const UploadPage = () => {
       <div className="upload-container">
         <div className="header-section">
           <div className="icon-wrapper">
-            <Activity className="header-icon" />
+            <Target className="header-icon" />
           </div>
-          <h1 className="main-title">ML Model Comparison Lab</h1>
-          <p className="subtitle">Upload an image to compare predictions from two different models with explainability insights</p>
+          <h1 className="main-title">Mitotic Cell Detection Lab</h1>
+          <p className="subtitle">Sequential AI pipeline: YOLOv11 detection → ResNet classification for precise mitotic cell analysis</p>
         </div>
 
         <Card className="upload-card" data-testid="upload-card">
@@ -109,7 +110,7 @@ const UploadPage = () => {
               ) : (
                 <div className="drop-zone-content">
                   <Upload className="upload-icon" />
-                  <p className="drop-text">Drag and drop an image here</p>
+                  <p className="drop-text">Drag and drop cell microscopy image here</p>
                   <p className="drop-subtext">or</p>
                   <Button
                     variant="outline"
@@ -141,12 +142,12 @@ const UploadPage = () => {
                   {isAnalyzing ? (
                     <>
                       <Zap className="btn-icon spinning" />
-                      Analyzing...
+                      Processing Pipeline...
                     </>
                   ) : (
                     <>
                       <Zap className="btn-icon" />
-                      Analyze with Both Models
+                      Run Detection Pipeline
                     </>
                   )}
                 </Button>
@@ -155,21 +156,32 @@ const UploadPage = () => {
           </CardContent>
         </Card>
 
-        <div className="features-grid">
-          <div className="feature-card">
-            <Activity className="feature-icon" />
-            <h3>Dual Model Analysis</h3>
-            <p>Compare predictions from two different ML architectures</p>
-          </div>
-          <div className="feature-card">
-            <ImageIcon className="feature-icon" />
-            <h3>Visual Explainability</h3>
-            <p>Grad-CAM heatmaps and segmentation masks for transparency</p>
-          </div>
-          <div className="feature-card">
-            <Zap className="feature-icon" />
-            <h3>Instant Results</h3>
-            <p>Real-time inference with confidence scores and insights</p>
+        <div className="pipeline-info">
+          <h3 className="pipeline-title">Sequential Analysis Pipeline</h3>
+          <div className="pipeline-steps">
+            <div className="pipeline-step">
+              <div className="step-number">1</div>
+              <div className="step-content">
+                <h4>YOLOv11 Detection</h4>
+                <p>Identifies and localizes all cells in the image</p>
+              </div>
+            </div>
+            <div className="pipeline-arrow">→</div>
+            <div className="pipeline-step">
+              <div className="step-number">2</div>
+              <div className="step-content">
+                <h4>ResNet Classification</h4>
+                <p>Classifies each detected cell as mitotic or non-mitotic</p>
+              </div>
+            </div>
+            <div className="pipeline-arrow">→</div>
+            <div className="pipeline-step">
+              <div className="step-number">3</div>
+              <div className="step-content">
+                <h4>Results & Visualization</h4>
+                <p>Comprehensive analysis with explainability</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -202,7 +214,7 @@ const ResultsPage = () => {
     );
   }
 
-  const { original_image, model_a, model_b } = results;
+  const { original_image, yolo_results, resnet_results, processing_time } = results;
 
   return (
     <div className="results-page">
@@ -217,12 +229,17 @@ const ResultsPage = () => {
             <ArrowLeft className="btn-icon" />
             New Analysis
           </Button>
-          <h1 className="results-title">Model Comparison Results</h1>
+          <div>
+            <h1 className="results-title">Detection Results</h1>
+            <p className="results-subtitle" data-testid="processing-time">
+              Processed in {processing_time?.toFixed(2)}s
+            </p>
+          </div>
         </div>
 
         <Card className="original-image-card" data-testid="original-image-card">
           <CardHeader>
-            <CardTitle>Original Image</CardTitle>
+            <CardTitle>Original Microscopy Image</CardTitle>
           </CardHeader>
           <CardContent>
             <img
@@ -236,22 +253,30 @@ const ResultsPage = () => {
 
         <div className="comparison-grid">
           <ModelCard
-            title="Model A"
-            prediction={model_a.prediction}
-            confidence={model_a.confidence}
-            explainabilityImages={model_a.explainability_images}
-            summary={model_a.explainability_summary}
+            title="Step 1: YOLOv11 Detection"
+            modelName={yolo_results.model_name}
+            predictions={yolo_results.predictions}
+            totalDetections={yolo_results.total_detections}
+            mitoticCount={yolo_results.mitotic_count}
+            nonMitoticCount={yolo_results.non_mitotic_count}
+            annotatedImage={yolo_results.annotated_image}
+            explainabilityImages={yolo_results.explainability_images}
+            summary={yolo_results.summary}
             accentColor="#3b82f6"
-            testId="model-a"
+            testId="yolo"
           />
           <ModelCard
-            title="Model B"
-            prediction={model_b.prediction}
-            confidence={model_b.confidence}
-            explainabilityImages={model_b.explainability_images}
-            summary={model_b.explainability_summary}
+            title="Step 2: ResNet Classification"
+            modelName={resnet_results.model_name}
+            predictions={resnet_results.predictions}
+            totalDetections={resnet_results.total_detections}
+            mitoticCount={resnet_results.mitotic_count}
+            nonMitoticCount={resnet_results.non_mitotic_count}
+            annotatedImage={resnet_results.annotated_image}
+            explainabilityImages={resnet_results.explainability_images}
+            summary={resnet_results.summary}
             accentColor="#10b981"
-            testId="model-b"
+            testId="resnet"
           />
         </div>
       </div>
@@ -259,48 +284,93 @@ const ResultsPage = () => {
   );
 };
 
-const ModelCard = ({ title, prediction, confidence, explainabilityImages, summary, accentColor, testId }) => {
+const ModelCard = ({ 
+  title, 
+  modelName, 
+  predictions, 
+  totalDetections, 
+  mitoticCount, 
+  nonMitoticCount, 
+  annotatedImage, 
+  explainabilityImages, 
+  summary, 
+  accentColor, 
+  testId 
+}) => {
   return (
     <Card className="model-card" data-testid={`${testId}-card`}>
       <CardHeader style={{ borderLeft: `4px solid ${accentColor}` }}>
         <CardTitle className="model-title">{title}</CardTitle>
-        <CardDescription>Deep Learning Classification Model</CardDescription>
+        <CardDescription>{modelName}</CardDescription>
       </CardHeader>
       <CardContent className="model-content">
-        <div className="prediction-section">
-          <div className="prediction-label">Prediction</div>
-          <div className="prediction-value" data-testid={`${testId}-prediction`}>{prediction}</div>
-        </div>
-
-        <div className="confidence-section">
-          <div className="confidence-header">
-            <span className="confidence-label">Confidence Score</span>
-            <span className="confidence-value" data-testid={`${testId}-confidence`}>{(confidence * 100).toFixed(2)}%</span>
+        <div className="stats-grid">
+          <div className="stat-box">
+            <div className="stat-label">Total Cells</div>
+            <div className="stat-value" data-testid={`${testId}-total`}>{totalDetections}</div>
           </div>
-          <Progress value={confidence * 100} className="confidence-progress" />
-        </div>
-
-        <div className="explainability-section">
-          <h4 className="section-title">Explainability Visualizations</h4>
-          <div className="explainability-images">
-            {explainabilityImages.map((img, idx) => (
-              <div key={idx} className="explain-image-wrapper">
-                <img
-                  src={`data:image/png;base64,${img}`}
-                  alt={`Explainability ${idx + 1}`}
-                  className="explain-image"
-                  data-testid={`${testId}-explain-img-${idx}`}
-                />
-                <div className="explain-label">{idx === 0 ? 'Grad-CAM' : 'Segmentation'}</div>
-              </div>
-            ))}
+          <div className="stat-box mitotic">
+            <div className="stat-label">Mitotic</div>
+            <div className="stat-value" data-testid={`${testId}-mitotic`}>{mitoticCount}</div>
+          </div>
+          <div className="stat-box non-mitotic">
+            <div className="stat-label">Non-Mitotic</div>
+            <div className="stat-value" data-testid={`${testId}-non-mitotic`}>{nonMitoticCount}</div>
           </div>
         </div>
+
+        <div className="annotated-section">
+          <h4 className="section-title">Annotated Detection</h4>
+          <div className="annotated-image-wrapper">
+            <img
+              src={`data:image/png;base64,${annotatedImage}`}
+              alt="Annotated"
+              className="annotated-image"
+              data-testid={`${testId}-annotated`}
+            />
+          </div>
+        </div>
+
+        {explainabilityImages && explainabilityImages.length > 1 && (
+          <div className="explainability-section">
+            <h4 className="section-title">Explainability Heatmap</h4>
+            <div className="heatmap-wrapper">
+              <img
+                src={`data:image/png;base64,${explainabilityImages[1]}`}
+                alt="Heatmap"
+                className="heatmap-image"
+                data-testid={`${testId}-heatmap`}
+              />
+            </div>
+          </div>
+        )}
 
         <div className="summary-section">
           <h4 className="section-title">Analysis Summary</h4>
           <p className="summary-text" data-testid={`${testId}-summary`}>{summary}</p>
         </div>
+
+        {predictions && predictions.length > 0 && (
+          <div className="detections-list">
+            <h4 className="section-title">Individual Detections</h4>
+            <div className="detections-scroll">
+              {predictions.slice(0, 5).map((pred, idx) => (
+                <div key={idx} className="detection-item" data-testid={`${testId}-detection-${idx}`}>
+                  <Badge variant={pred.label.includes('Mitotic') ? 'destructive' : 'default'}>
+                    {pred.label}
+                  </Badge>
+                  <span className="detection-conf">{(pred.confidence * 100).toFixed(1)}%</span>
+                  {pred.refinement && (
+                    <span className="detection-refinement">{pred.refinement}</span>
+                  )}
+                </div>
+              ))}
+              {predictions.length > 5 && (
+                <p className="more-detections">+ {predictions.length - 5} more detections</p>
+              )}
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
