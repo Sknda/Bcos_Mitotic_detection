@@ -106,7 +106,31 @@ def load_models():
         # Load ResNet model
         if RESNET_MODEL_PATH.exists():
             logger.info(f"Loading ResNet model from {RESNET_MODEL_PATH}")
-            resnet_model = torch.load(str(RESNET_MODEL_PATH), map_location=device)
+            
+            # Load state_dict
+            state_dict = torch.load(str(RESNET_MODEL_PATH), map_location=device)
+            
+            # Check if it's a state_dict or full model
+            if isinstance(state_dict, dict) and not hasattr(state_dict, 'eval'):
+                logger.info("Detected state_dict, creating ResNet50 architecture...")
+                from torchvision.models import resnet50
+                
+                # Create ResNet50 with 2 output classes
+                resnet_model = resnet50(num_classes=2)
+                
+                # Modify first conv layer for 6-channel input (if needed)
+                if 'conv1.linear.weight' in state_dict:
+                    logger.info("Model expects 6-channel input (modified architecture)")
+                    # Use state_dict as-is since it's a custom architecture
+                    # We need to create a wrapper that handles this
+                    resnet_model = CustomResNetWrapper(state_dict, device)
+                else:
+                    # Standard ResNet, load state_dict
+                    resnet_model.load_state_dict(state_dict)
+                    resnet_model = resnet_model.to(device)
+            else:
+                resnet_model = state_dict
+            
             resnet_model.eval()
             logger.info("✓ ResNet model loaded successfully")
         else:
