@@ -321,27 +321,47 @@ def run_resnet_classification(image: Image.Image, yolo_detections: List[Dict]) -
                 region = img_array[y:y+h, x:x+w]
                 region_pil = Image.fromarray(region)
                 
-                # Preprocess for ResNet
+                # Preprocess for ResNet (resize to 224x224)
                 input_tensor = preprocess(region_pil).unsqueeze(0).to(device)
+                
+                # Convert 3-channel to 6-channel by duplicating (if model expects 6 channels)
+                if input_tensor.shape[1] == 3:
+                    input_tensor = torch.cat([input_tensor, input_tensor], dim=1)
                 
                 # Run inference
                 with torch.no_grad():
-                    output = resnet_model(input_tensor)
-                    probabilities = torch.nn.functional.softmax(output[0], dim=0)
-                    
-                    # Get prediction
-                    pred_idx = torch.argmax(probabilities).item()
-                    confidence = probabilities[pred_idx].item()
-                    
-                    label = "Mitotic Cell" if pred_idx == 0 else "Non-Mitotic Cell"
-                    
-                    refined_predictions.append({
-                        'bbox': det['bbox'],
-                        'confidence': confidence,
-                        'label': label,
-                        'yolo_label': det['label'],
-                        'refinement': 'Confirmed' if label == det['label'] else 'Corrected'
-                    })
+                    try:
+                        output = resnet_model(input_tensor)
+                        
+                        # Handle different output formats
+                        if len(output.shape) == 4:  # Shape: [batch, classes, 1, 1]
+                            output = output.squeeze(-1).squeeze(-1)
+                        
+                        probabilities = torch.nn.functional.softmax(output[0], dim=0)
+                        
+                        # Get prediction
+                        pred_idx = torch.argmax(probabilities).item()
+                        confidence = probabilities[pred_idx].item()
+                        
+                        label = "Mitotic Cell" if pred_idx == 0 else "Non-Mitotic Cell"
+                        
+                        refined_predictions.append({
+                            'bbox': det['bbox'],
+                            'confidence': confidence,
+                            'label': label,
+                            'yolo_label': det['label'],
+                            'refinement': 'Confirmed' if label == det['label'] else 'Corrected'
+                        })
+                    except Exception as inference_error:
+                        logger.warning(f"ResNet inference error for region: {inference_error}")
+                        # Keep YOLO prediction if ResNet fails
+                        refined_predictions.append({
+                            'bbox': det['bbox'],
+                            'confidence': det['confidence'],
+                            'label': det['label'],
+                            'yolo_label': det['label'],
+                            'refinement': 'YOLO only'
+                        })
             
             mitotic_count = sum(1 for p in refined_predictions if 'mitotic' in p['label'].lower())
             non_mitotic_count = len(refined_predictions) - mitotic_count
@@ -366,6 +386,9 @@ def run_resnet_classification(image: Image.Image, yolo_detections: List[Dict]) -
             
         except Exception as e:
             logger.error(f"Error in ResNet classification: {str(e)}")
+            logger.error(f"Error details: {type(e).__name__}")
+            import traceback
+            logger.error(traceback.format_exc())
             # Fall back to mock
             pass
     
