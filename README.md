@@ -43,7 +43,7 @@ Our system achieves a competitive balance of sensitivity and specificity:
 * Git LFS (Large File Storage)
 
 ### 1. Clone the Repository
-git clone https://github.com/oxihigh/mitotic-detection-system.git
+git clone https://github.com/Sknda/Bcos_Mitotic_detection
 cd mitotic-detection-system
 git lfs pull
 
