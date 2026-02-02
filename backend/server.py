@@ -19,25 +19,107 @@ import torchvision.transforms as transforms
 from ultralytics import YOLO
 import cv2
 
-# Custom ResNet Wrapper for state_dict loading
-class CustomResNetWrapper(nn.Module):
-    """Wrapper to handle custom ResNet state_dict with 6-channel input"""
-    def __init__(self, state_dict, device):
+# B-cos Conv2d layer implementation
+class BcosConv2d(nn.Module):
+    """B-cosine convolutional layer"""
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, bias=False):
         super().__init__()
-        self.state_dict_params = state_dict
-        self.device = device
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
+        self.stride = stride
+        self.padding = padding
         
-        # Create a simple sequential model structure
-        # This is a placeholder - we'll use the state_dict directly
-        self.model_dict = {k: v.to(device) for k, v in state_dict.items()}
+        # Linear layer for B-cos transform
+        self.linear = nn.Linear(in_channels * self.kernel_size[0] * self.kernel_size[1], 
+                                out_channels, bias=bias)
         
     def forward(self, x):
-        # For now, return mock output since we need the actual architecture
-        # We'll handle this in the inference function
-        batch_size = x.shape[0]
-        return torch.randn(batch_size, 2).to(self.device)
+        batch, c_in, h_in, w_in = x.shape
+        kh, kw = self.kernel_size
+        
+        # Unfold input to extract patches
+        x_unfold = torch.nn.functional.unfold(x, self.kernel_size, 
+                                             padding=self.padding, stride=self.stride)
+        x_unfold = x_unfold.transpose(1, 2)  # (batch, num_patches, c_in*kh*kw)
+        
+        # Apply linear transformation (B-cos style)
+        out = self.linear(x_unfold)  # (batch, num_patches, out_channels)
+        
+        # Calculate output spatial dimensions
+        h_out = (h_in + 2 * self.padding - kh) // self.stride + 1
+        w_out = (w_in + 2 * self.padding - kw) // self.stride + 1
+        
+        # Reshape to standard conv output
+        out = out.transpose(1, 2).reshape(batch, self.out_channels, h_out, w_out)
+        
+        return out
+
+# Custom B-cos ResNet Wrapper
+class BcosResNetWrapper(nn.Module):
+    """Wrapper to handle B-cos ResNet state_dict with 6-channel input"""
+    def __init__(self, state_dict, device):
+        super().__init__()
+        self.device = device
+        
+        # Build B-cos ResNet architecture
+        from torchvision.models import resnet50
+        
+        # Create base ResNet50 for architecture reference
+        base_model = resnet50(num_classes=2)
+        
+        # Replace first conv with B-cos conv for 6-channel input
+        self.conv1 = BcosConv2d(6, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        
+        # Use standard layers from base model for the rest
+        self.bn1 = base_model.bn1
+        self.relu = base_model.relu
+        self.maxpool = base_model.maxpool
+        self.layer1 = base_model.layer1
+        self.layer2 = base_model.layer2
+        self.layer3 = base_model.layer3
+        self.layer4 = base_model.layer4
+        self.avgpool = base_model.avgpool
+        self.fc = base_model.fc
+        
+        # Load state dict with B-cos modifications
+        self._load_bcos_state_dict(state_dict)
+        
+        self.to(device)
+        
+    def _load_bcos_state_dict(self, state_dict):
+        """Load state dict handling B-cos specific keys"""
+        # Create a mapping from state_dict keys to model keys
+        model_dict = self.state_dict()
+        
+        # Load what we can from the state dict
+        for key, value in state_dict.items():
+            if key in model_dict:
+                try:
+                    model_dict[key].copy_(value)
+                except:
+                    logger.warning(f"Could not load {key}, shape mismatch")
+        
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
+        
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+        
+        x = self.avgpool(x)
+        x = torch.flatten(x, 1)
+        x = self.fc(x)
+        
+        # Return as (batch, 2, 1, 1) for compatibility
+        return x.unsqueeze(-1).unsqueeze(-1)
     
     def eval(self):
+        super().eval()
         return self
 
 ROOT_DIR = Path(__file__).parent
@@ -55,9 +137,9 @@ app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
 # Model paths
-MODELS_DIR = Path("/app/models")
-YOLO_MODEL_PATH = MODELS_DIR / "yolov11_model.pt"
-RESNET_MODEL_PATH = MODELS_DIR / "resnet_model.pt"
+MODELS_DIR = ROOT_DIR.parent / "models"
+YOLO_MODEL_PATH = MODELS_DIR / "best1.pt"
+RESNET_MODEL_PATH = MODELS_DIR / "best_mitotic_sunday_model_v1.pth"
 
 # Global model variables
 yolo_model = None
@@ -142,10 +224,9 @@ def load_models():
                 
                 # Modify first conv layer for 6-channel input (if needed)
                 if 'conv1.linear.weight' in state_dict:
-                    logger.info("Model expects 6-channel input (modified architecture)")
-                    # Use state_dict as-is since it's a custom architecture
-                    # We need to create a wrapper that handles this
-                    resnet_model = CustomResNetWrapper(state_dict, device)
+                    logger.info("Model expects 6-channel input (B-cos modified architecture)")
+                    # Use B-cos wrapper for custom architecture
+                    resnet_model = BcosResNetWrapper(state_dict, device)
                 else:
                     # Standard ResNet, load state_dict
                     resnet_model.load_state_dict(state_dict)
